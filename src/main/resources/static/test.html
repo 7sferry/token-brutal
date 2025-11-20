@@ -21,7 +21,7 @@
 <script>
 	const apiProfile = 'http://localhost:8888';
 	async function login() {
-		const res = await fetch(`${apiProfile}/api/auth/login`, {
+		const res = await fetch(`${apiProfile}/auth/login`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
@@ -34,9 +34,8 @@
 		document.getElementById('output').innerText = await res.text();
 	}
 
-
 	async function getProfile() {
-		const res = await fetch(`${apiProfile}/api/profile`, {
+		const res = await fetch(`${apiProfile}/profile`, {
 			method: 'GET',
 			credentials: 'include' // automatically sends cookie
 		});

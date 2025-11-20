@@ -5,37 +5,20 @@ package org.example.tokenbrutal.controller;
  * on November 2025     *
  ************************/
 
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
+import io.jsonwebtoken.Claims;
 import lombok.extern.slf4j.Slf4j;
-import org.example.tokenbrutal.util.JwtUtil;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @Slf4j
 @RestController
-@RequestMapping("/api")
 public class ProtectedController {
 
 	@GetMapping("/profile")
-	public String getProfile(HttpServletRequest request) {
+	public String getProfile(Authentication authentication) {
 		log.info("Getting profile");
-		String token = null;
-		if (request.getCookies() != null) {
-			for (Cookie c : request.getCookies()) {
-				if ("token".equals(c.getName())) {
-					token = c.getValue();
-					break;
-				}
-			}
-		}
-
-		String username = JwtUtil.validateToken(token);
-		if (username == null) {
-			throw new RuntimeException("Invalid or expired token");
-		}
-
-		return "Welcome, " + username + "! This is your profile.";
+		Claims principal = (Claims) authentication.getPrincipal();
+		return "Welcome, " + principal.getSubject() + "! This is your profile.";
 	}
 }

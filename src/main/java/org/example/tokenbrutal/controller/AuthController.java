@@ -16,7 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/auth")
 public class AuthController {
 
 	@PostMapping("/login")
@@ -25,7 +25,7 @@ public class AuthController {
 		if ("admin".equals(request.getUsername()) && "12345".equals(request.getPassword())) {
 			String token = JwtUtil.generateToken(request.getUsername());
 
-			ResponseCookie cookie = ResponseCookie.from("token", token)
+			ResponseCookie cookie = ResponseCookie.from("access_token", token)
 					.httpOnly(true)
 					.secure(false)
 					.path("/")
