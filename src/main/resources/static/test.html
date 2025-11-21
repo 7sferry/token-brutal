@@ -20,6 +20,7 @@
 
 <script>
 	const apiProfile = 'http://localhost:8888';
+	let accessToken = '';
 	async function login() {
 		const res = await fetch(`${apiProfile}/auth/login`, {
 			method: 'POST',
@@ -27,17 +28,23 @@
 			body: JSON.stringify({
 				username: document.getElementById('username').value,
 				password: document.getElementById('password').value
-			}),
-			credentials: 'include' // IMPORTANT: send/receive cookies
+			})
 		});
 
-		document.getElementById('output').innerText = await res.text();
+		if (!res.ok) {
+			document.getElementById('output').innerText = await res.text();
+			return;
+		}
+		const data = await res.json();
+		console.log(JSON.stringify(data));
+		accessToken = data.accessToken;
+		document.getElementById('output').innerText = data.message;
 	}
 
 	async function getProfile() {
 		const res = await fetch(`${apiProfile}/profile`, {
 			method: 'GET',
-			credentials: 'include' // automatically sends cookie
+			headers: { "Authorization": "Bearer " + accessToken }
 		});
 		document.getElementById('output').innerText = await res.text();
 	}

@@ -10,8 +10,8 @@ import io.jsonwebtoken.Jws;
 import jakarta.servlet.*;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.example.tokenbrutal.util.JwtUtil;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -19,6 +19,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 
 public class JwtAuthenticationFilter implements Filter{
+
+	public static final String BEARER_PREFIX = "Bearer ";
 
 	private String extractTokenFromCookie(HttpServletRequest req, String cookieName){
 		if(req.getCookies() == null) return null;
@@ -29,17 +31,21 @@ public class JwtAuthenticationFilter implements Filter{
 	}
 
 	@Override
-	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException{
-		HttpServletRequest req = (HttpServletRequest) request;
-		HttpServletResponse res = (HttpServletResponse) response;
-		String accessToken = extractTokenFromCookie(req, "access_token");
+	public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException{
+		HttpServletRequest req = (HttpServletRequest) servletRequest;
+		String header = req.getHeader(HttpHeaders.AUTHORIZATION);
+		if (header == null || !header.startsWith(BEARER_PREFIX)) {
+			filterChain.doFilter(servletRequest, servletResponse);
+			return;
+		}
+		String accessToken = header.substring(BEARER_PREFIX.length());
 		Jws<Claims> claimsJws = JwtUtil.validateToken(accessToken);
 		if(claimsJws == null){
-			chain.doFilter(request, response);
+			filterChain.doFilter(servletRequest, servletResponse);
 			return;
 		}
 		UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(claimsJws.getPayload(), null, new ArrayList<>());
 		SecurityContextHolder.getContext().setAuthentication(auth);
-		chain.doFilter(request, response);
+		filterChain.doFilter(servletRequest, servletResponse);
 	}
 }

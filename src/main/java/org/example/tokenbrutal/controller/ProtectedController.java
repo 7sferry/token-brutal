@@ -19,6 +19,6 @@ public class ProtectedController {
 	public String getProfile(Authentication authentication) {
 		log.info("Getting profile");
 		Claims principal = (Claims) authentication.getPrincipal();
-		return "Welcome, " + principal.getSubject() + "! This is your profile.";
+		return "🔐Welcome, " + principal.getSubject() + "! This is your profile.";
 	}
 }

@@ -7,11 +7,9 @@ package org.example.tokenbrutal.controller;
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.Data;
+import lombok.Builder;
 import org.example.tokenbrutal.util.JwtUtil;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,19 +20,10 @@ public class AuthController {
 	@PostMapping("/login")
 	public ResponseEntity<?> login(@RequestBody LoginRequest request, HttpServletResponse response) {
 		// For demo: hardcoded user
-		if ("admin".equals(request.getUsername()) && "12345".equals(request.getPassword())) {
-			String token = JwtUtil.generateToken(request.getUsername());
-
-			ResponseCookie cookie = ResponseCookie.from("access_token", token)
-					.httpOnly(true)
-					.secure(false)
-					.path("/")
-					.maxAge(15 * 60)
-					.sameSite("Lax")
-					.build();
-
-			response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-			return ResponseEntity.ok("Login success!");
+		if ("admin".equals(request.username()) && "12345".equals(request.password())) {
+			String token = JwtUtil.generateToken(request.username());
+			LoginResponse loginResponse = LoginResponse.builder().accessToken(token).message("Login success!").build();
+			return ResponseEntity.ok(loginResponse);
 		} else {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials");
 		}
@@ -42,7 +31,7 @@ public class AuthController {
 
 	@GetMapping("/logout")
 	public ResponseEntity<?> logout(HttpServletResponse response) {
-		Cookie cookie = new Cookie("token", "");
+		Cookie cookie = new Cookie("access_token", "");
 		cookie.setPath("/");
 		cookie.setHttpOnly(true);
 		cookie.setMaxAge(0);
@@ -50,11 +39,11 @@ public class AuthController {
 		return ResponseEntity.ok("Logged out");
 	}
 
-	@Data
-	public static class LoginRequest {
-		private String username;
-		private String password;
-		// getters and setters
+	@Builder
+	public record LoginRequest(String username, String password) {
 	}
+
+	@Builder
+	public record LoginResponse(String accessToken, String message){}
 
 }
