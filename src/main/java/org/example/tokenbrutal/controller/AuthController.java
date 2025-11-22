@@ -5,60 +5,78 @@ package org.example.tokenbrutal.controller;
  * on November 2025     *
  ************************/
 
+import de.huxhorn.sulky.ulid.ULID;
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.example.tokenbrutal.controller.request.LoginRequest;
 import org.example.tokenbrutal.controller.response.LoginResponse;
 import org.example.tokenbrutal.controller.response.RefreshTokenResponse;
+import org.example.tokenbrutal.entity.TokenEntity;
 import org.example.tokenbrutal.persistent.UserSession;
 import org.example.tokenbrutal.repository.UserSessionRepository;
-import org.example.tokenbrutal.util.JwtUtil;
-import org.example.tokenbrutal.util.OpaqueTokenUtil;
+import org.example.tokenbrutal.util.TokenUtil;
+import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.time.Instant;
 
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/auth")
 public class AuthController {
-	public static final int MAX_AGE_SECONDS = 5 * 60;
+	public static final int REFRESH_TOKEN_MAX_AGE_SECONDS = 5 * 60;
+	public static final String REFRESH_TOKEN_PREFIX = "refreshToken:";
 
 	private final UserSessionRepository userSessionRepository;
+	private final RedisOperations<String, Object> redisOperations;
+	public final ULID ulid;
 
 	@PostMapping("/login")
 	@Transactional
-	public ResponseEntity<?> login(@RequestBody LoginRequest request, HttpServletResponse response) {
-		// For demo: hardcoded user
+	public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request, HttpServletResponse response) {
 		if ("admin".equals(request.username()) && "12345".equals(request.password())) {
-			String refreshToken = OpaqueTokenUtil.generateToken();
+			String refreshToken = TokenUtil.generateOpaqueToken();
 			ResponseCookie cookie = getResponseCookie(refreshToken);
 			response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-			saveSession(request, refreshToken);
-			String token = JwtUtil.generateToken(request.username());
-			LoginResponse loginResponse = LoginResponse.builder()
-					.accessToken(token)
-					.message("Login success!")
+			UserSession userSession = saveSession(request, refreshToken);
+			String accessToken = TokenUtil.generateJwtToken(request.username(), userSession.getId());
+			cacheToken(refreshToken, accessToken, userSession);
+			LoginResponse tokenResponse = LoginResponse.builder()
+					.accessToken(accessToken)
+					.message("Login successful")
 					.build();
-			return ResponseEntity.ok(loginResponse);
+			return ResponseEntity.ok(tokenResponse);
 		}
-		return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
 	}
 
-	private void saveSession(LoginRequest request, String refreshToken){
+	private void cacheToken(String refreshToken, String accessToken, UserSession userSession){
+		TokenEntity tokenEntity = TokenEntity.builder()
+				.token(accessToken)
+				.username(userSession.getUsername())
+				.sessionId(userSession.getId())
+				.build();
+		redisOperations.opsForValue().set(REFRESH_TOKEN_PREFIX + refreshToken, tokenEntity, Duration.ofSeconds(REFRESH_TOKEN_MAX_AGE_SECONDS));
+	}
+
+	private UserSession saveSession(LoginRequest request, String refreshToken){
 		UserSession userSession = new UserSession();
 		userSession.setUsername(request.username());
 		Instant creationTime = Instant.now();
-		userSession.setExpirationTime(creationTime.plusSeconds(MAX_AGE_SECONDS));
-		userSession.setSessionId(refreshToken);
+		userSession.setExpirationTime(creationTime.plusSeconds(REFRESH_TOKEN_MAX_AGE_SECONDS));
+		userSession.setRefreshToken(refreshToken);
 		userSession.setCreationTime(creationTime);
-		userSessionRepository.save(userSession);
+		userSession.setId(ulid.nextULID());
+		return userSessionRepository.save(userSession);
 	}
 
 	private static ResponseCookie getResponseCookie(String refreshToken){
@@ -66,7 +84,7 @@ public class AuthController {
 				.httpOnly(true)
 				.secure(false)
 				.path("/auth/refresh")
-				.maxAge(MAX_AGE_SECONDS)
+				.maxAge(REFRESH_TOKEN_MAX_AGE_SECONDS)
 				.sameSite("Lax")
 				.build();
 	}
@@ -76,7 +94,16 @@ public class AuthController {
 		if (refreshToken == null) {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
-		UserSession userSession = userSessionRepository.findById(refreshToken).orElse(null);
+		TokenEntity cachedToken = (TokenEntity) redisOperations.opsForValue().get(REFRESH_TOKEN_PREFIX + refreshToken);
+		if(cachedToken != null){
+			RefreshTokenResponse tokenResponse = RefreshTokenResponse.builder()
+					.accessToken(cachedToken.token())
+					.username(cachedToken.username())
+					.message("Token refreshed")
+					.build();
+			return ResponseEntity.ok(tokenResponse);
+		}
+		UserSession userSession = userSessionRepository.findByRefreshToken(refreshToken).orElse(null);
 		if (userSession == null) {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
@@ -84,22 +111,36 @@ public class AuthController {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
 		String username = userSession.getUsername();
-		String newAccessToken = JwtUtil.generateToken(username);
+		String newAccessToken = TokenUtil.generateJwtToken(username, userSession.getId());
+		cacheToken(refreshToken, newAccessToken, userSession);
 		RefreshTokenResponse tokenResponse = RefreshTokenResponse.builder()
 				.accessToken(newAccessToken)
 				.username(username)
+				.message("Token refreshed")
 				.build();
 		return ResponseEntity.ok(tokenResponse);
 	}
 
 	@GetMapping("/logout")
-	public ResponseEntity<?> logout(HttpServletResponse response) {
+	@Transactional
+	public ResponseEntity<?> logout(Authentication authentication, HttpServletResponse response) {
+		Claims principal = (Claims) authentication.getPrincipal();
+		String sessionId = principal.get("sessionId", String.class);
+		if(sessionId != null){
+			userSessionRepository.findById(sessionId)
+					.filter(userSession -> userSession.getExpirationTime().isAfter(Instant.now()))
+					.ifPresent(user -> {
+						user.setExpirationTime(Instant.now());
+						userSessionRepository.save(user);
+						redisOperations.delete(REFRESH_TOKEN_PREFIX + user.getRefreshToken());
+					});
+		}
 		Cookie cookie = new Cookie("refresh_token", "");
-		cookie.setPath("/");
+		cookie.setPath("/auth/refresh");
 		cookie.setHttpOnly(true);
 		cookie.setMaxAge(0);
 		response.addCookie(cookie);
-		return ResponseEntity.ok("Logged out");
+		return ResponseEntity.ok(LoginResponse.builder().accessToken("").message("Logged out").build());
 	}
 
 }

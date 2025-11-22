@@ -16,11 +16,12 @@ import java.time.Instant;
 
 @Getter
 @Setter
-@EqualsAndHashCode(of = "sessionId")
+@EqualsAndHashCode(of = "refreshToken")
 @Entity
 public class UserSession{
 	@Id
-	private String sessionId;
+	private String id;
+	private String refreshToken;
 	private String username;
 	@Column(updatable = false)
 	private Instant creationTime;

@@ -1,4 +1,4 @@
-package org.example.tokenbrutal.controller.response;
+package org.example.tokenbrutal.entity;
 
 import lombok.Builder;
 
@@ -8,5 +8,5 @@ import lombok.Builder;
  ************************/
 
 @Builder
-public record RefreshTokenResponse(String accessToken, String username, String message){
+public record TokenEntity(String token, String username, String sessionId){
 }

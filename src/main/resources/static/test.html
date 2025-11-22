@@ -14,17 +14,19 @@
 <button onclick="login()">Login</button>
 
 <h2>Profile</h2>
-<button onclick="getProfile(fetchProfile)">Get Profile</button>
+<button onclick="getProfile()">Get Profile</button>
 
 <p id="output"></p>
+<button onclick="logout()">Logout</button>
 
 <script>
 	const site = 'http://localhost:8888';
 	let accessToken = '';
-	async function login() {
+
+	async function login(){
 		const res = await fetch(`${site}/auth/login`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: {'Content-Type': 'application/json'},
 			body: JSON.stringify({
 				username: document.getElementById('username').value,
 				password: document.getElementById('password').value
@@ -32,12 +34,11 @@
 			credentials: 'include'
 		});
 
-		if (!res.ok) {
+		if(!res.ok){
 			document.getElementById('output').innerText = await res.text();
 			return;
 		}
 		const data = await res.json();
-		console.log(JSON.stringify(data));
 		accessToken = data.accessToken;
 		document.getElementById('output').innerText = data.message;
 	}
@@ -50,15 +51,21 @@
 				return;
 			}
 		}
-		let res = await fetchProfile();
+		let res = await fetch(`${site}/profile`, {
+			method: 'GET',
+			headers: {"Authorization": "Bearer " + accessToken}
+		});
 		if(res.status === 401){
 			accessToken = await generateToken();
 			if(!accessToken){
 				document.getElementById('output').innerText = 'Session expired.';
 				return;
 			}
-			res = await fetchProfile();
-			if(res.status !== 200){
+			res = await fetch(`${site}/profile`, {
+				method: 'GET',
+				headers: {"Authorization": "Bearer " + accessToken}
+			});
+			if(!res.ok){
 				document.getElementById('output').innerText = "failed to access";
 				return;
 			}
@@ -79,12 +86,38 @@
 		}
 	}
 
-	async function fetchProfile() {
-		return await fetch(`${site}/profile`, {
+	async function logout(){
+		if(!accessToken){
+			accessToken = await generateToken();
+			if(!accessToken){
+				document.getElementById('output').innerText = 'Session expired.';
+				return;
+			}
+		}
+		let res = await fetch(`${site}/auth/logout`, {
 			method: 'GET',
-			headers: { "Authorization": "Bearer " + accessToken }
+			headers: {"Authorization": "Bearer " + accessToken}
 		});
+
+		if(res.status === 401){
+			accessToken = await generateToken();
+			if(!accessToken){
+				document.getElementById('output').innerText = 'Session expired.';
+				return;
+			}
+			res = await fetch(`${site}/auth/logout`, {
+				method: 'GET',
+				headers: {"Authorization": "Bearer " + accessToken}
+			});
+			if(!res.ok){
+				document.getElementById('output').innerText = "failed to access";
+				return;
+			}
+		}
+		const data = await res.json();
+		document.getElementById('output').innerText = data.message;
 	}
+
 </script>
 </body>
 </html>

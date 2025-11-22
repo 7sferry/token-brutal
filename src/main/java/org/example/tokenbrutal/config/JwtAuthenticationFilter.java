@@ -9,7 +9,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
-import org.example.tokenbrutal.util.JwtUtil;
+import org.example.tokenbrutal.util.TokenUtil;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,7 +30,7 @@ public class JwtAuthenticationFilter implements Filter{
 			return;
 		}
 		String accessToken = header.substring(BEARER_PREFIX.length());
-		Jws<Claims> claimsJws = JwtUtil.validateToken(accessToken);
+		Jws<Claims> claimsJws = TokenUtil.parseJwtToken(accessToken);
 		if(claimsJws == null){
 			filterChain.doFilter(servletRequest, servletResponse);
 			return;
