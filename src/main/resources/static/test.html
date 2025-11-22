@@ -14,21 +14,22 @@
 <button onclick="login()">Login</button>
 
 <h2>Profile</h2>
-<button onclick="getProfile()">Get Profile</button>
+<button onclick="getProfile(fetchProfile)">Get Profile</button>
 
 <p id="output"></p>
 
 <script>
-	const apiProfile = 'http://localhost:8888';
+	const site = 'http://localhost:8888';
 	let accessToken = '';
 	async function login() {
-		const res = await fetch(`${apiProfile}/auth/login`, {
+		const res = await fetch(`${site}/auth/login`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
 				username: document.getElementById('username').value,
 				password: document.getElementById('password').value
-			})
+			}),
+			credentials: 'include'
 		});
 
 		if (!res.ok) {
@@ -41,12 +42,48 @@
 		document.getElementById('output').innerText = data.message;
 	}
 
-	async function getProfile() {
-		const res = await fetch(`${apiProfile}/profile`, {
+	async function getProfile(){
+		if(!accessToken){
+			accessToken = await generateToken();
+			if(!accessToken){
+				document.getElementById('output').innerText = 'Session expired.';
+				return;
+			}
+		}
+		let res = await fetchProfile();
+		if(res.status === 401){
+			accessToken = await generateToken();
+			if(!accessToken){
+				document.getElementById('output').innerText = 'Session expired.';
+				return;
+			}
+			res = await fetchProfile();
+			if(res.status !== 200){
+				document.getElementById('output').innerText = "failed to access";
+				return;
+			}
+		}
+		document.getElementById('output').innerText = await res.text();
+	}
+
+	async function generateToken(){
+		const refresh = await fetch(`${site}/auth/refresh`, {
+			method: "POST",
+			credentials: "include"
+		});
+		if(refresh.ok){
+			const data = await refresh.json();
+			return data.accessToken;
+		} else{
+			return null;
+		}
+	}
+
+	async function fetchProfile() {
+		return await fetch(`${site}/profile`, {
 			method: 'GET',
 			headers: { "Authorization": "Bearer " + accessToken }
 		});
-		document.getElementById('output').innerText = await res.text();
 	}
 </script>
 </body>

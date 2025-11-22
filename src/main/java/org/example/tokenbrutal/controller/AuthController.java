@@ -5,8 +5,6 @@ package org.example.tokenbrutal.controller;
  * on November 2025     *
  ************************/
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jws;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +19,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -29,34 +28,47 @@ import java.time.Instant;
 @RequiredArgsConstructor
 @RequestMapping("/auth")
 public class AuthController {
-	public static final int MAX_AGE_SECONDS = 24 * 60 * 60;
+	public static final int MAX_AGE_SECONDS = 5 * 60;
 
 	private final UserSessionRepository userSessionRepository;
 
 	@PostMapping("/login")
+	@Transactional
 	public ResponseEntity<?> login(@RequestBody LoginRequest request, HttpServletResponse response) {
 		// For demo: hardcoded user
 		if ("admin".equals(request.username()) && "12345".equals(request.password())) {
-			String token = JwtUtil.generateToken(request.username());
-			LoginResponse loginResponse = LoginResponse.builder().accessToken(token).message("Login success!").build();
 			String refreshToken = OpaqueTokenUtil.generateToken();
-			ResponseCookie cookie = ResponseCookie.from("refresh_token", refreshToken)
-					.httpOnly(true)
-					.secure(false)
-					.path("/auth/refresh")
-					.maxAge(MAX_AGE_SECONDS)
-					.sameSite("Lax")
-					.build();
+			ResponseCookie cookie = getResponseCookie(refreshToken);
 			response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-			UserSession userSession = new UserSession();
-			userSession.setUsername(request.username());
-			userSession.setExpirationTime(Instant.now().plusSeconds(MAX_AGE_SECONDS));
-			userSession.setSessionId(refreshToken);
-			userSessionRepository.save(userSession);
+			saveSession(request, refreshToken);
+			String token = JwtUtil.generateToken(request.username());
+			LoginResponse loginResponse = LoginResponse.builder()
+					.accessToken(token)
+					.message("Login success!")
+					.build();
 			return ResponseEntity.ok(loginResponse);
-		} else {
-			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials");
 		}
+		return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+	}
+
+	private void saveSession(LoginRequest request, String refreshToken){
+		UserSession userSession = new UserSession();
+		userSession.setUsername(request.username());
+		Instant creationTime = Instant.now();
+		userSession.setExpirationTime(creationTime.plusSeconds(MAX_AGE_SECONDS));
+		userSession.setSessionId(refreshToken);
+		userSession.setCreationTime(creationTime);
+		userSessionRepository.save(userSession);
+	}
+
+	private static ResponseCookie getResponseCookie(String refreshToken){
+		return ResponseCookie.from("refresh_token", refreshToken)
+				.httpOnly(true)
+				.secure(false)
+				.path("/auth/refresh")
+				.maxAge(MAX_AGE_SECONDS)
+				.sameSite("Lax")
+				.build();
 	}
 
 	@PostMapping("/refresh")
@@ -64,15 +76,14 @@ public class AuthController {
 		if (refreshToken == null) {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
-		Jws<Claims> claimsJws = JwtUtil.validateToken(refreshToken);
-		if (claimsJws == null) {
+		UserSession userSession = userSessionRepository.findById(refreshToken).orElse(null);
+		if (userSession == null) {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
-		Claims payload = claimsJws.getPayload();
-		if (payload == null) {
+		if(userSession.getExpirationTime().isBefore(Instant.now())){
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
-		String username = payload.getSubject();
+		String username = userSession.getUsername();
 		String newAccessToken = JwtUtil.generateToken(username);
 		RefreshTokenResponse tokenResponse = RefreshTokenResponse.builder()
 				.accessToken(newAccessToken)
