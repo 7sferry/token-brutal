@@ -8,7 +8,6 @@ package org.example.tokenbrutal.config;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.servlet.*;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.example.tokenbrutal.util.JwtUtil;
 import org.springframework.http.HttpHeaders;
@@ -21,14 +20,6 @@ import java.util.ArrayList;
 public class JwtAuthenticationFilter implements Filter{
 
 	public static final String BEARER_PREFIX = "Bearer ";
-
-	private String extractTokenFromCookie(HttpServletRequest req, String cookieName){
-		if(req.getCookies() == null) return null;
-		for(Cookie c : req.getCookies()){
-			if(cookieName.equals(c.getName())) return c.getValue();
-		}
-		return null;
-	}
 
 	@Override
 	public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException{
