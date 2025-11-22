@@ -16,6 +16,7 @@ import org.example.tokenbrutal.controller.response.RefreshTokenResponse;
 import org.example.tokenbrutal.entity.TokenEntity;
 import org.example.tokenbrutal.persistent.UserSession;
 import org.example.tokenbrutal.repository.UserSessionRepository;
+import org.example.tokenbrutal.util.TokenExtenderService;
 import org.example.tokenbrutal.util.TokenUtil;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.http.HttpHeaders;
@@ -23,6 +24,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,7 +39,8 @@ public class AuthController {
 
 	private final UserSessionRepository userSessionRepository;
 	private final RedisOperations<String, Object> redisOperations;
-	public final ULID ulid;
+	private final ULID ulid;
+	private final TokenExtenderService tokenExtenderService;
 
 	@PostMapping("/login")
 	@Transactional
@@ -63,7 +66,7 @@ public class AuthController {
 				.token(accessToken)
 				.username(userSession.getUsername())
 				.build();
-		redisOperations.opsForValue().set(REFRESH_TOKEN_PREFIX + refreshToken, tokenEntity, Duration.ofSeconds(TokenUtil.ACCESS_TOKEN_EXPIRATION));
+		redisOperations.opsForValue().set(REFRESH_TOKEN_PREFIX + refreshToken, tokenEntity, Duration.ofMillis(TokenUtil.ACCESS_TOKEN_EXPIRATION_MILLISECOND));
 	}
 
 	private UserSession saveSession(LoginRequest request, String refreshToken){
@@ -88,6 +91,7 @@ public class AuthController {
 	}
 
 	@PostMapping("/refresh")
+	@Transactional(propagation = Propagation.SUPPORTS)
 	public ResponseEntity<RefreshTokenResponse> refresh(@CookieValue(value = "refresh_token", required = false) String refreshToken) {
 		if (refreshToken == null) {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -105,9 +109,11 @@ public class AuthController {
 		if (userSession == null) {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
-		if(userSession.getExpirationTime().isBefore(Instant.now())){
+		Instant now = Instant.now();
+		if(userSession.getExpirationTime().isBefore(now)){
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
+		tokenExtenderService.extendRefreshToken(now, userSession);
 		String username = userSession.getUsername();
 		String newAccessToken = TokenUtil.generateJwtToken(username, userSession.getId());
 		cacheAccessToken(refreshToken, newAccessToken, userSession);
@@ -139,7 +145,7 @@ public class AuthController {
 		cookie.setHttpOnly(true);
 		cookie.setMaxAge(0);
 		response.addCookie(cookie);
-		return ResponseEntity.ok(LoginResponse.builder().accessToken("").message("Logged out").build());
+		return ResponseEntity.ok(LoginResponse.builder().message("Logged out").build());
 	}
 
 }
