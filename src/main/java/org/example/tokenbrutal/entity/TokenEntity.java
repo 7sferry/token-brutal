@@ -8,5 +8,5 @@ import lombok.Builder;
  ************************/
 
 @Builder
-public record TokenEntity(String token, String username, String sessionId){
+public record TokenEntity(String token, String username){
 }

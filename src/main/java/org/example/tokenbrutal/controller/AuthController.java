@@ -33,7 +33,6 @@ import java.time.Instant;
 @RequiredArgsConstructor
 @RequestMapping("/auth")
 public class AuthController {
-	public static final int REFRESH_TOKEN_MAX_AGE_SECONDS = 5 * 60;
 	public static final String REFRESH_TOKEN_PREFIX = "refreshToken:";
 
 	private final UserSessionRepository userSessionRepository;
@@ -49,7 +48,7 @@ public class AuthController {
 			response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
 			UserSession userSession = saveSession(request, refreshToken);
 			String accessToken = TokenUtil.generateJwtToken(request.username(), userSession.getId());
-			cacheToken(refreshToken, accessToken, userSession);
+			cacheAccessToken(refreshToken, accessToken, userSession);
 			LoginResponse tokenResponse = LoginResponse.builder()
 					.accessToken(accessToken)
 					.message("Login successful")
@@ -59,20 +58,19 @@ public class AuthController {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
 	}
 
-	private void cacheToken(String refreshToken, String accessToken, UserSession userSession){
+	private void cacheAccessToken(String refreshToken, String accessToken, UserSession userSession){
 		TokenEntity tokenEntity = TokenEntity.builder()
 				.token(accessToken)
 				.username(userSession.getUsername())
-				.sessionId(userSession.getId())
 				.build();
-		redisOperations.opsForValue().set(REFRESH_TOKEN_PREFIX + refreshToken, tokenEntity, Duration.ofSeconds(REFRESH_TOKEN_MAX_AGE_SECONDS));
+		redisOperations.opsForValue().set(REFRESH_TOKEN_PREFIX + refreshToken, tokenEntity, Duration.ofSeconds(TokenUtil.ACCESS_TOKEN_EXPIRATION));
 	}
 
 	private UserSession saveSession(LoginRequest request, String refreshToken){
 		UserSession userSession = new UserSession();
 		userSession.setUsername(request.username());
 		Instant creationTime = Instant.now();
-		userSession.setExpirationTime(creationTime.plusSeconds(REFRESH_TOKEN_MAX_AGE_SECONDS));
+		userSession.setExpirationTime(creationTime.plusSeconds(TokenUtil.REFRESH_TOKEN_MAX_AGE_SECONDS));
 		userSession.setRefreshToken(refreshToken);
 		userSession.setCreationTime(creationTime);
 		userSession.setId(ulid.nextULID());
@@ -84,7 +82,7 @@ public class AuthController {
 				.httpOnly(true)
 				.secure(false)
 				.path("/auth/refresh")
-				.maxAge(REFRESH_TOKEN_MAX_AGE_SECONDS)
+				.maxAge(TokenUtil.REFRESH_TOKEN_MAX_AGE_SECONDS)
 				.sameSite("Lax")
 				.build();
 	}
@@ -112,7 +110,7 @@ public class AuthController {
 		}
 		String username = userSession.getUsername();
 		String newAccessToken = TokenUtil.generateJwtToken(username, userSession.getId());
-		cacheToken(refreshToken, newAccessToken, userSession);
+		cacheAccessToken(refreshToken, newAccessToken, userSession);
 		RefreshTokenResponse tokenResponse = RefreshTokenResponse.builder()
 				.accessToken(newAccessToken)
 				.username(username)
@@ -127,10 +125,11 @@ public class AuthController {
 		Claims principal = (Claims) authentication.getPrincipal();
 		String sessionId = principal.get("sessionId", String.class);
 		if(sessionId != null){
+			Instant now = Instant.now();
 			userSessionRepository.findById(sessionId)
-					.filter(userSession -> userSession.getExpirationTime().isAfter(Instant.now()))
+					.filter(userSession -> userSession.getExpirationTime().isAfter(now))
 					.ifPresent(user -> {
-						user.setExpirationTime(Instant.now());
+						user.setExpirationTime(now);
 						userSessionRepository.save(user);
 						redisOperations.delete(REFRESH_TOKEN_PREFIX + user.getRefreshToken());
 					});

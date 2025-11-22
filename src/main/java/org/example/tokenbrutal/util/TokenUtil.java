@@ -18,8 +18,9 @@ import java.util.Date;
 import java.util.Map;
 
 public class TokenUtil{
+	public static final int REFRESH_TOKEN_MAX_AGE_SECONDS = 5 * 60;
 	private static final SecretKey SECRET_KEY = Keys.hmacShaKeyFor("supersecretkey12345678901234567890".getBytes());
-	private static final long EXPIRATION = 1000 * 60 * 2; // 15 min
+	public static final long ACCESS_TOKEN_EXPIRATION = 1000 * 60 * 2; // 15 min
 	private static final SecureRandom random = new SecureRandom();
 	private static final Base64.Encoder base64Encoder = Base64.getUrlEncoder();
 
@@ -28,7 +29,7 @@ public class TokenUtil{
 		return Jwts.builder()
 				.subject(username)
 				.claims(claims)
-				.expiration(new Date(System.currentTimeMillis() + EXPIRATION))
+				.expiration(new Date(System.currentTimeMillis() + ACCESS_TOKEN_EXPIRATION))
 				.signWith(SECRET_KEY)
 				.compact();
 	}
