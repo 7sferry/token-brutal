@@ -97,8 +97,9 @@
 
 	async function logout(){
 		let res = await fetch(`${site}/auth/logout`, {
-			method: 'GET',
-			headers: {"Authorization": "Bearer " + accessToken}
+			method: 'POST',
+			headers: {"Authorization": "Bearer " + accessToken},
+			credentials: 'include'
 		});
 
 		if(res.status === 401){
@@ -108,8 +109,9 @@
 				return;
 			}
 			res = await fetch(`${site}/auth/logout`, {
-				method: 'GET',
-				headers: {"Authorization": "Bearer " + accessToken}
+				method: 'POST',
+				headers: {"Authorization": "Bearer " + accessToken},
+				credentials: 'include'
 			});
 			if(!res.ok){
 				document.getElementById('output').innerText = "failed to access";
@@ -117,6 +119,7 @@
 			}
 		}
 		const data = await res.json();
+		accessToken = data.accessToken;
 		document.getElementById('output').innerText = data.message;
 	}
 

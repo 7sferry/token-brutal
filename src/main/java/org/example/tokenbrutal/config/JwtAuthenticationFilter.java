@@ -19,7 +19,7 @@ import java.util.ArrayList;
 
 public class JwtAuthenticationFilter implements Filter{
 
-	public static final String BEARER_PREFIX = "Bearer ";
+	private static final String BEARER_PREFIX = "Bearer ";
 
 	@Override
 	public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException{

@@ -8,5 +8,5 @@ import lombok.Builder;
  ************************/
 
 @Builder
-public record LoginResponse(String accessToken, String message){
+public record TokenResponse(String accessToken, String message){
 }

@@ -39,7 +39,8 @@ public class SecurityConfig{
 				.exceptionHandling(ex ->
 						ex.authenticationEntryPoint((_, response, _) ->
 								response.setStatus(HttpServletResponse.SC_UNAUTHORIZED)))
-				.sessionManagement(sessionManagementConfigurer -> sessionManagementConfigurer.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.sessionManagement(sessionManagementConfigurer ->
+						sessionManagementConfigurer.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(matcherRegistry -> matcherRegistry
 						.requestMatchers("/auth/login", "/auth/refresh").permitAll()
 						.anyRequest().authenticated())
