@@ -17,7 +17,7 @@ public class AdviceController{
 
 	@ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
 	@ExceptionHandler(Exception.class)
-	public String handleFileNotFoundException(Exception e) {
+	public String handleGeneralError(Exception e) {
 		log.error("Error: {}", e.getMessage(), e);
 		return "error";
 	}

@@ -6,7 +6,6 @@ package org.example.tokenbrutal.controller;
  ************************/
 
 import de.huxhorn.sulky.ulid.ULID;
-import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +20,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -37,6 +35,7 @@ import java.time.Instant;
 public class AuthController{
 	public static final String REFRESH_TOKEN_PREFIX = "refreshToken:";
 	public static final String REFRESH_TOKEN = "refresh_token";
+	public static final String REFRESH = "/auth";
 
 	private final UserSessionRepository userSessionRepository;
 	private final RedisOperations<String, Object> redisOperations;
@@ -49,7 +48,7 @@ public class AuthController{
 		if("admin".equals(request.username()) && "12345".equals(request.password())){
 			String refreshToken = TokenUtil.generateOpaqueToken();
 			String hashedRefreshToken = TokenUtil.hash(refreshToken);
-			UserSession userSession = saveSession(request, hashedRefreshToken);
+			UserSession userSession = saveSession(hashedRefreshToken, request.username());
 			String accessToken = TokenUtil.generateJwtToken(request.username(), userSession.getId());
 			cacheAccessToken(hashedRefreshToken, accessToken, userSession);
 			TokenResponse tokenResponse = TokenResponse.builder()
@@ -71,13 +70,12 @@ public class AuthController{
 		redisOperations.opsForValue().set(REFRESH_TOKEN_PREFIX + hashedRefreshToken, tokenEntity, Duration.ofMillis(TokenUtil.ACCESS_TOKEN_EXPIRATION_MS));
 	}
 
-	private UserSession saveSession(LoginRequest request, String hashedRefreshToken){
+	private UserSession saveSession(String hashedRefreshToken, String username){
 		UserSession userSession = new UserSession();
-		userSession.setUsername(request.username());
+		userSession.setUsername(username);
 		Instant creationTime = Instant.now();
 		userSession.setExpirationTime(creationTime.plusSeconds(TokenUtil.REFRESH_TOKEN_MAX_AGE_SECONDS));
 		userSession.setRefreshToken(hashedRefreshToken);
-		userSession.setCreationTime(creationTime);
 		userSession.setId(ulid.nextULID());
 		return userSessionRepository.save(userSession);
 	}
@@ -86,7 +84,7 @@ public class AuthController{
 		return ResponseCookie.from(REFRESH_TOKEN, refreshToken)
 				.httpOnly(true)
 				.secure(false)
-				.path("/auth/refresh")
+				.path(REFRESH)
 				.maxAge(TokenUtil.REFRESH_TOKEN_MAX_AGE_SECONDS)
 				.sameSite("Lax")
 				.build();
@@ -94,10 +92,7 @@ public class AuthController{
 
 	@PostMapping("/refresh")
 	@Transactional
-	public ResponseEntity<TokenResponse> refresh(@CookieValue(value = REFRESH_TOKEN, required = false) String refreshToken){
-		if(refreshToken == null){
-			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-		}
+	public ResponseEntity<TokenResponse> refresh(@CookieValue(REFRESH_TOKEN) String refreshToken, HttpServletResponse response){
 		String hashedRefreshToken = TokenUtil.hash(refreshToken);
 		TokenEntity cachedToken = (TokenEntity) redisOperations.opsForValue().get(REFRESH_TOKEN_PREFIX + hashedRefreshToken);
 		if(cachedToken != null){
@@ -115,14 +110,31 @@ public class AuthController{
 		if(userSession.getExpirationTime().isBefore(now)){
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
-		Thread.startVirtualThread(() -> extendToken(userSession.getId(), now));
-		String newAccessToken = TokenUtil.generateJwtToken(userSession.getUsername(), userSession.getId());
-		cacheAccessToken(hashedRefreshToken, newAccessToken, userSession);
+		String username = userSession.getUsername();
+		String accessToken = TokenUtil.generateJwtToken(username, userSession.getId());
+		String newRefreshToken = TokenUtil.generateOpaqueToken();
+		Thread.startVirtualThread(() -> rotateNewToken(newRefreshToken, username, accessToken, now, hashedRefreshToken));
+		ResponseCookie cookie = getResponseCookie(newRefreshToken);
+		response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
 		TokenResponse tokenResponse = TokenResponse.builder()
-				.accessToken(newAccessToken)
-				.message("Token refreshed")
+				.accessToken(accessToken)
+				.message("Login successful")
 				.build();
 		return ResponseEntity.ok(tokenResponse);
+	}
+
+	private void rotateNewToken(String newRefreshToken, String username, String accessToken, Instant now, String oldHashedRefreshToken){
+		TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+		transactionTemplate.executeWithoutResult(_ -> {
+			String newHashedRefreshToken = TokenUtil.hash(newRefreshToken);
+			UserSession newUserSession = saveSession(newHashedRefreshToken, username);
+			cacheAccessToken(newHashedRefreshToken, accessToken, newUserSession);
+			userSessionRepository.findByRefreshToken(oldHashedRefreshToken)
+					.ifPresent(userSession -> {
+						userSession.setExpirationTime(now.plus(Duration.ofMinutes(1)));
+						userSessionRepository.save(userSession);
+					});
+		});
 	}
 
 	private void extendToken(String id, Instant now){
@@ -140,21 +152,18 @@ public class AuthController{
 
 	@PostMapping("/logout")
 	@Transactional
-	public ResponseEntity<?> logout(Authentication authentication, HttpServletResponse response){
-		Claims principal = (Claims) authentication.getPrincipal();
-		String sessionId = principal.get("sessionId", String.class);
-		if(sessionId != null){
-			Instant now = Instant.now();
-			userSessionRepository.findById(sessionId)
-					.filter(userSession -> userSession.getExpirationTime().isAfter(now))
-					.ifPresent(user -> {
-						user.setExpirationTime(now);
-						userSessionRepository.save(user);
-						redisOperations.delete(REFRESH_TOKEN_PREFIX + user.getRefreshToken());
-					});
-		}
+	public ResponseEntity<?> logout(@CookieValue(REFRESH_TOKEN) String refreshToken, HttpServletResponse response){
+		Instant now = Instant.now();
+		String hashedRefreshToken = TokenUtil.hash(refreshToken);
+		userSessionRepository.findByRefreshToken(hashedRefreshToken)
+				.filter(userSession -> userSession.getExpirationTime().isAfter(now))
+				.ifPresent(user -> {
+					user.setExpirationTime(now);
+					userSessionRepository.save(user);
+				});
+		redisOperations.delete(REFRESH_TOKEN_PREFIX + hashedRefreshToken);
 		ResponseCookie deleteCookie = ResponseCookie.from(REFRESH_TOKEN, null)
-				.path("/auth/refresh")
+				.path(REFRESH)
 				.httpOnly(true)
 				.maxAge(0)
 				.build();

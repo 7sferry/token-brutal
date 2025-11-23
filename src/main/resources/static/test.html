@@ -63,7 +63,8 @@
 	async function getProfile(){
 		let res = await fetch(`${site}/profile`, {
 			method: 'GET',
-			headers: {"Authorization": "Bearer " + accessToken}
+			headers: {"Authorization": "Bearer " + accessToken},
+			credentials: 'include'
 		});
 		if(res.status === 401){
 			accessToken = await generateToken();
@@ -73,7 +74,8 @@
 			}
 			res = await fetch(`${site}/profile`, {
 				method: 'GET',
-				headers: {"Authorization": "Bearer " + accessToken}
+				headers: {"Authorization": "Bearer " + accessToken},
+				credentials: 'include'
 			});
 			if(!res.ok){
 				document.getElementById('output').innerText = "failed to access";
