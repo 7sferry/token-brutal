@@ -1,0 +1,91 @@
+<!--~~~~~~~~~~~~~~~~~~~~~
+  ~ Made by [MR Ferry™] ~
+  ~ on November 2025    ~
+  ~~~~~~~~~~~~~~~~~~~~~-->
+
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Pure JS SPA</title>
+	<style>
+        body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;padding:16px}
+        nav a{margin-right:12px;text-decoration:none}
+        nav a.active{font-weight:700}
+        main{margin-top:18px}
+	</style>
+</head>
+<body>
+<header>
+	<h1>Mini SPA (Hash Router)</h1>
+	<nav>
+		<a href="#/" data-link>Home</a>
+		<a href="#/about" data-link>About</a>
+		<a href="#/blog" data-link>Blog</a>
+		<a href="#/blog/42" data-link>Blog #42</a>
+	</nav>
+</header>
+
+<main id="app"><!-- content injected here --></main>
+
+<script>
+	// Simple hash router
+	const root = document.getElementById('app');
+
+	// "pages" (could be modules or functions that fetch/render content)
+	const routes = [
+		{ path: /^\/?$/, view: () => `<h2>Home</h2><p>Welcome to the home page.</p>` },
+		{ path: /^\/about$/, view: () => `<h2>About</h2><p>This site uses pure JS for routing.</p>` },
+		{ path: /^\/blog$/, view: () => `<h2>Blog</h2><p>List of posts (placeholder).</p>` },
+		// route with param: /blog/:id
+		{ path: /^\/blog\/(\d+)$/, view: (match) => `<h2>Post #${match[1]}</h2><p>Post content for id ${match[1]}.</p>` },
+	];
+
+	function parseHash() {
+		// strip leading '#'
+		const hash = location.hash.slice(1) || '/';
+		return hash;
+	}
+
+	function findRoute(url) {
+		for (const r of routes) {
+			const match = url.match(r.path);
+			if (match) return { route: r, match };
+		}
+		return null;
+	}
+
+	function render() {
+		const url = parseHash();
+		const found = findRoute(url);
+		if (found) {
+			root.innerHTML = found.route.view(found.match);
+		} else {
+			root.innerHTML = `<h2>404</h2><p>Page not found: ${url}</p>`;
+		}
+		highlightActiveLink();
+	}
+
+	// helper to style active nav link
+	function highlightActiveLink() {
+		document.querySelectorAll('nav a[data-link]').forEach(a => {
+			const href = a.getAttribute('href').replace('#', '') || '/';
+			a.classList.toggle('active', href === parseHash());
+		});
+	}
+
+	// init
+	window.addEventListener('hashchange', render);
+	window.addEventListener('load', render);
+
+	// optional: intercept clicks on <a data-link> to allow custom behavior (not needed for hash)
+	document.addEventListener('click', e => {
+		const a = e.target.closest('a[data-link]');
+		// if (!a)
+		// let normal anchor/hash behavior happen; preventing default used for history API approach
+	});
+
+</script>
+</body>
+</html>
