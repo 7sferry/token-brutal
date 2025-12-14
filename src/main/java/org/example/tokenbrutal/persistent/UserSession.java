@@ -22,8 +22,6 @@ import java.time.Instant;
 @Entity
 public class UserSession{
 	@Id
-	private String id;
-	@Column(unique = true)
 	private String refreshToken;
 	private String username;
 	@CreationTimestamp

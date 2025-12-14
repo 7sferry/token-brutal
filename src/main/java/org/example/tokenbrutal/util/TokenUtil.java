@@ -16,15 +16,14 @@ import javax.crypto.SecretKey;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
 
 public class TokenUtil{
-	public static final int REFRESH_TOKEN_MAX_AGE_SECONDS = 5 * 60;
-	public static final long ACCESS_TOKEN_EXPIRATION_MS = 2 * 60 * 1000; // 15 min
+	public static final int REFRESH_TOKEN_MAX_AGE_SECONDS = 10 * 60;
+	public static final int ROTATION_TOKEN_BEFORE_EXPIRE_IN_SECONDS = 3 * 60;
+	public static final long ACCESS_TOKEN_EXPIRATION_MS = 2 * 60 * 1000;
 	private static final SecretKey SECRET_KEY = Keys.hmacShaKeyFor("supersecretkey12345678901234567890".getBytes());
-	private static final Base64.Encoder BASE_64_ENCODER = Base64.getUrlEncoder().withoutPadding();
 	private static final SecureRandom SECURE_RANDOM;
 
 	static{
@@ -37,8 +36,8 @@ public class TokenUtil{
 		SECURE_RANDOM = instanceStrong;
 	}
 
-	public static String generateJwtToken(String username, String sessionId) {
-		Map<String, String> claims = Maps.of("role", "superuser").and("realName", "ferry").and("sessionId", sessionId).build();
+	public static String generateJwtToken(String username) {
+		Map<String, String> claims = Maps.of("role", "superuser").and("realName", "ferry").build();
 		return Jwts.builder()
 				.subject(username)
 				.claims(claims)
@@ -61,17 +60,18 @@ public class TokenUtil{
 		}
 	}
 
-	public static String generateOpaqueToken(){
+	public static String generateOpaqueToken(long expirationEpoch){
 		byte[] bytes = new byte[32];
 		SECURE_RANDOM.nextBytes(bytes);
-		return BASE_64_ENCODER.encodeToString(bytes);
+		return CrockfordBase32.encodeTimestamp(expirationEpoch) + CrockfordBase32.encode(bytes);
 	}
 
 	@SneakyThrows
-	public static String hash(String value){
+	public static String hashOpaqueToken(String refreshToken){
+		String uniquePart = refreshToken.substring(10);
 		MessageDigest sha256 = MessageDigest.getInstance("SHA256");
-		byte[] digest = sha256.digest(value.getBytes());
-		return BASE_64_ENCODER.encodeToString(digest);
+		byte[] digest = sha256.digest(uniquePart.getBytes());
+		return refreshToken.substring(0, 10) + CrockfordBase32.encode(digest);
 	}
 
 }
