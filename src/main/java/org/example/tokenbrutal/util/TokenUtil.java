@@ -16,6 +16,7 @@ import javax.crypto.SecretKey;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
 
@@ -24,6 +25,7 @@ public class TokenUtil{
 	public static final int ROTATION_TOKEN_BEFORE_EXPIRE_IN_SECONDS = 3 * 60;
 	public static final long ACCESS_TOKEN_EXPIRATION_MS = 2 * 60 * 1000;
 	private static final SecretKey SECRET_KEY = Keys.hmacShaKeyFor("supersecretkey12345678901234567890".getBytes());
+	private static final Base64.Encoder BASE_64_ENCODER = Base64.getUrlEncoder().withoutPadding();
 	private static final SecureRandom SECURE_RANDOM;
 
 	static{
@@ -63,7 +65,7 @@ public class TokenUtil{
 	public static String generateOpaqueToken(long expirationEpoch){
 		byte[] bytes = new byte[32];
 		SECURE_RANDOM.nextBytes(bytes);
-		return CrockfordBase32.encodeTimestamp(expirationEpoch) + CrockfordBase32.encode(bytes);
+		return CrockfordBase32.encodeTimestamp(expirationEpoch) + BASE_64_ENCODER.encodeToString(bytes);
 	}
 
 	@SneakyThrows
@@ -71,7 +73,7 @@ public class TokenUtil{
 		String uniquePart = refreshToken.substring(10);
 		MessageDigest sha256 = MessageDigest.getInstance("SHA256");
 		byte[] digest = sha256.digest(uniquePart.getBytes());
-		return refreshToken.substring(0, 10) + CrockfordBase32.encode(digest);
+		return refreshToken.substring(0, 10) + BASE_64_ENCODER.encodeToString(digest);
 	}
 
 }
