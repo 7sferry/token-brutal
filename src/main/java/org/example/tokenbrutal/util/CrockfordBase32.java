@@ -138,18 +138,6 @@ public class CrockfordBase32 {
 			throw new IllegalArgumentException("invalid string " + encoded);
 		}
 
-		return decodeNumberInternal(encoded);
-	}
-
-	public static long decodeTimestamp(String encoded) {
-		if (encoded == null || encoded.isEmpty() || encoded.length() > 10) {
-			throw new IllegalArgumentException("invalid string " + encoded);
-		}
-
-		return decodeNumberInternal(encoded);
-	}
-
-	private static long decodeNumberInternal(String encoded){
 		long result = 0;
 
 		for (int i = 0; i < encoded.length(); i++) {
