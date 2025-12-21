@@ -10,7 +10,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.tokenbrutal.controller.request.LoginRequest;
 import org.example.tokenbrutal.controller.response.TokenResponse;
-import org.example.tokenbrutal.entity.TokenEntity;
 import org.example.tokenbrutal.persistent.UserSession;
 import org.example.tokenbrutal.repository.UserSessionRepository;
 import org.example.tokenbrutal.util.TokenUtil;
@@ -29,7 +28,7 @@ import java.time.Instant;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/auth")
+@RequestMapping(AuthController.AUTH_COOKIE_PATH)
 @Slf4j
 public class AuthController{
 	public static final String REFRESH_TOKEN_KEY_PREFIX = "refreshToken:";
@@ -49,7 +48,7 @@ public class AuthController{
 			String hashedRefreshToken = TokenUtil.hashOpaqueToken(refreshToken);
 			UserSession userSession = saveSession(hashedRefreshToken, request.username(), expirationTime);
 			String accessToken = TokenUtil.generateJwtToken(request.username());
-			cacheAccessToken(hashedRefreshToken, accessToken, userSession);
+			cacheRefreshToken(hashedRefreshToken, userSession);
 			TokenResponse tokenResponse = TokenResponse.builder()
 					.accessToken(accessToken)
 					.message("Login successful")
@@ -61,12 +60,8 @@ public class AuthController{
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
 	}
 
-	private void cacheAccessToken(String hashedRefreshToken, String accessToken, UserSession userSession){
-		TokenEntity tokenEntity = TokenEntity.builder()
-				.token(accessToken)
-				.username(userSession.getUsername())
-				.build();
-		redisOperations.opsForValue().set(getHashedRefreshTokenKey(hashedRefreshToken), tokenEntity, Duration.ofMillis(TokenUtil.ACCESS_TOKEN_EXPIRATION_MS));
+	private void cacheRefreshToken(String hashedRefreshToken, UserSession userSession){
+		redisOperations.opsForValue().set(getHashedRefreshTokenKey(hashedRefreshToken), userSession, Duration.ofSeconds(TokenUtil.REFRESH_TOKEN_MAX_AGE_SECONDS));
 	}
 
 	private static String getHashedRefreshTokenKey(String hashedRefreshToken){
@@ -98,15 +93,7 @@ public class AuthController{
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
 		String hashedRefreshToken = TokenUtil.hashOpaqueToken(refreshToken);
-		TokenEntity cachedToken = (TokenEntity) redisOperations.opsForValue().get(getHashedRefreshTokenKey(hashedRefreshToken));
-		if(cachedToken != null){
-			TokenResponse tokenResponse = TokenResponse.builder()
-					.accessToken(cachedToken.token())
-					.message("Token refreshed")
-					.build();
-			return ResponseEntity.ok(tokenResponse);
-		}
-		UserSession userSession = userSessionRepository.findById(hashedRefreshToken).orElse(null);
+		UserSession userSession = getUserSession(hashedRefreshToken);
 		if(userSession == null){
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
@@ -118,14 +105,13 @@ public class AuthController{
 		String username = userSession.getUsername();
 		String accessToken = TokenUtil.generateJwtToken(username);
 		if(expirationTime.minusSeconds(TokenUtil.ROTATION_TOKEN_BEFORE_EXPIRE_IN_SECONDS).isAfter(now)){
-			cacheAccessToken(hashedRefreshToken, accessToken, userSession);
 			TokenResponse tokenResponse = TokenResponse.builder()
 					.accessToken(accessToken)
 					.message("Token refreshed")
 					.build();
 			return ResponseEntity.ok(tokenResponse);
 		}
-		String newRefreshToken = getNewRefreshToken(username, accessToken, hashedRefreshToken, now);
+		String newRefreshToken = getNewRefreshToken(username, hashedRefreshToken, now);
 		ResponseCookie cookie = getResponseCookie(newRefreshToken);
 		response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
 		TokenResponse tokenResponse = TokenResponse.builder()
@@ -135,19 +121,24 @@ public class AuthController{
 		return ResponseEntity.ok(tokenResponse);
 	}
 
-	private String getNewRefreshToken(String username, String accessToken, String hashedRefreshToken, Instant now){
+	private UserSession getUserSession(String hashedRefreshToken){
+		UserSession cachedToken = (UserSession) redisOperations.opsForValue().get(getHashedRefreshTokenKey(hashedRefreshToken));
+		return cachedToken != null ? cachedToken : userSessionRepository.findById(hashedRefreshToken).orElse(null);
+	}
+
+	private String getNewRefreshToken(String username, String hashedRefreshToken, Instant now){
 		Instant expirationTime = now.plusSeconds(TokenUtil.REFRESH_TOKEN_MAX_AGE_SECONDS);
 		String newRefreshToken = TokenUtil.generateOpaqueToken(expirationTime.toEpochMilli());
-		Thread.startVirtualThread(() -> rotateNewToken(newRefreshToken, username, accessToken, hashedRefreshToken, expirationTime));
+		Thread.startVirtualThread(() -> rotateNewToken(newRefreshToken, username, hashedRefreshToken, expirationTime));
 		return newRefreshToken;
 	}
 
-	private void rotateNewToken(String newRefreshToken, String username, String accessToken, String oldHashedRefreshToken, Instant expirationTime){
+	private void rotateNewToken(String newRefreshToken, String username, String oldHashedRefreshToken, Instant expirationTime){
 		TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
 		transactionTemplate.executeWithoutResult(_ -> {
 			String newHashedRefreshToken = TokenUtil.hashOpaqueToken(newRefreshToken);
 			UserSession newUserSession = saveSession(newHashedRefreshToken, username, expirationTime);
-			cacheAccessToken(newHashedRefreshToken, accessToken, newUserSession);
+			cacheRefreshToken(newHashedRefreshToken, newUserSession);
 			userSessionRepository.findById(oldHashedRefreshToken)
 					.ifPresent(userSession -> {
 						Duration minutes = Duration.ofMinutes(1);

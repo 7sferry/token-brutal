@@ -1,5 +1,6 @@
 package org.example.tokenbrutal.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import de.huxhorn.sulky.ulid.ULID;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,6 +22,7 @@ public class LibraryConfig{
 		RedisTemplate<String, Object> template = new RedisTemplate<>();
 		template.setConnectionFactory(factory);
 		GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer();
+		jsonSerializer.configure(ObjectMapper::findAndRegisterModules);
 		StringRedisSerializer stringSerializer = new StringRedisSerializer();
 		template.setKeySerializer(stringSerializer);
 		template.setValueSerializer(jsonSerializer);
