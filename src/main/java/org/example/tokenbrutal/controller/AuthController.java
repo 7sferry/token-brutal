@@ -28,12 +28,12 @@ import java.time.Instant;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping(AuthController.AUTH_COOKIE_PATH)
+@RequestMapping(AuthController.AUTH_PATH)
 @Slf4j
 public class AuthController{
 	public static final String REFRESH_TOKEN_KEY_PREFIX = "refreshToken:";
 	public static final String REFRESH_TOKEN = "refresh_token";
-	public static final String AUTH_COOKIE_PATH = "/auth";
+	public static final String AUTH_PATH = "/auth";
 
 	private final UserSessionRepository userSessionRepository;
 	private final RedisOperations<String, Object> redisOperations;
@@ -80,7 +80,7 @@ public class AuthController{
 		return ResponseCookie.from(REFRESH_TOKEN, refreshToken)
 				.httpOnly(true)
 				.secure(false)
-				.path(AUTH_COOKIE_PATH)
+				.path(AUTH_PATH)
 				.maxAge(TokenUtil.REFRESH_TOKEN_MAX_AGE_SECONDS)
 				.sameSite("Lax")
 				.build();
@@ -151,19 +151,6 @@ public class AuthController{
 		});
 	}
 
-	private void extendToken(String id, Instant now){
-		TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
-		transactionTemplate.executeWithoutResult(_ -> {
-			UserSession userSession = userSessionRepository.findById(id).orElse(null);
-			if(userSession == null){
-				return;
-			}
-			log.info("Refreshing token for user {}", userSession.getUsername());
-			userSession.setExpirationTime(now.plusSeconds(TokenUtil.REFRESH_TOKEN_MAX_AGE_SECONDS));
-			userSessionRepository.save(userSession);
-		});
-	}
-
 	@PostMapping("/logout")
 	@Transactional
 	public ResponseEntity<?> logout(@CookieValue(value = REFRESH_TOKEN, required = false)  String refreshToken, HttpServletResponse response){
@@ -180,7 +167,7 @@ public class AuthController{
 				});
 		redisOperations.delete(getHashedRefreshTokenKey(hashedRefreshToken));
 		ResponseCookie deleteCookie = ResponseCookie.from(REFRESH_TOKEN, null)
-				.path(AUTH_COOKIE_PATH)
+				.path(AUTH_PATH)
 				.httpOnly(true)
 				.maxAge(0)
 				.build();
