@@ -34,6 +34,8 @@
 <script>
 	const site = 'http://localhost:8888';
 	let accessToken = "";
+	let refreshPromise = null;
+
 	generateToken()
 			.then(token => {
 				accessToken = token;
@@ -86,15 +88,25 @@
 	}
 
 	async function generateToken(){
-		const refresh = await fetch(`${site}/auth/refresh`, {
-			method: "POST",
-			credentials: "include"
-		});
-		if(refresh.ok){
-			const data = await refresh.json();
-			return data.accessToken;
+		if(refreshPromise){
+			return refreshPromise;
 		}
-		return null;
+		refreshPromise = (async () => {
+			try {
+				const refresh = await fetch(`${site}/auth/refresh`, {
+					method: "POST",
+					credentials: "include"
+				});
+				if(refresh.ok){
+					const data = await refresh.json();
+					return data.accessToken;
+				}
+				return null;
+			} finally {
+				refreshPromise = null;
+			}
+		})();
+		return refreshPromise;
 	}
 
 	async function logout(){
